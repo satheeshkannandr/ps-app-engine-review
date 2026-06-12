@@ -60,8 +60,8 @@ in the **Output Format** below.
 ### `PSPCMTXT` key scheme for App Engine (`OBJECTID1 = 66`)
 | Field | Meaning | Example |
 |---|---|---|
-| `OBJECTVALUE1` | AE program | `AR_AGING` |
-| `OBJECTVALUE2` | Section | `MAIN` |
+| `OBJECTVALUE1` | AE program | `AP_VCHRBLD` |
+| `OBJECTVALUE2` | Section | `C0000` |
 | `OBJECTVALUE3` | Market | `GBL` |
 | `OBJECTVALUE4` | DB platform | `default` |
 | `OBJECTVALUE5` | Effective date | `1900-01-01` |

@@ -1,0 +1,8 @@
+# Normalize line endings: store text as LF in the repo, check out native per OS.
+* text=auto
+
+# Always use LF in the working copy for these (silences CRLF warnings on Windows).
+*.md         text eol=lf
+*.json       text eol=lf
+*.gitignore  text eol=lf
+*.gitattributes text eol=lf

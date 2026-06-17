@@ -5,3 +5,6 @@
 # Keep these OUT of GitHub. Remove a line if you ever intentionally publish a review.
 *_review.md
 /LN_*/
+
+# Local doc-generation helper script — not part of the published repo
+make_doc.py

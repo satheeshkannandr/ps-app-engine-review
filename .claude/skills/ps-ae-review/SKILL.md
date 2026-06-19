@@ -164,6 +164,8 @@ lives in these. Look for:
 - `import <Pkg>:<Class>;` / `create <Pkg>:<Class>(...)` → **App Package class**
 - `Declare Function <fn> PeopleCode <RECORD>.<FIELD> <Event>;` → **record/FUNCLIB PeopleCode**
 - `CreateSQL(SQL.<name> ...)` / `SQLExec(SQL.<name> ...)` → **named SQL definition** (in `PSSQLTEXTDEFN`)
+- References to the **Strings Table** (`PS_STRINGS_TBL`, delivered) → resolve the actual text so the
+  logic reads concretely. Most AEs key on `PROGRAM_ID + STRING_ID`; the value is in `STRING_TEXT`.
 
 ```sql
 -- 7a. App Package class (or whole package: drop the OBJECTVALUE2 predicate)
@@ -181,6 +183,9 @@ ORDER  BY OBJECTVALUE3, PROGSEQ;
 -- 7c. Named SQL definition referenced as SQL.<name>  (watch DBTYPE — see the variant note under query 4)
 SELECT SQLID, DBTYPE, MARKET, SEQNUM, SQLTEXT FROM PSSQLTEXTDEFN WHERE SQLID = '<SQL_NAME>'
 ORDER BY DBTYPE, SEQNUM;   -- if multiple DBTYPEs, read the Oracle ('2') or default (' '/'0') row, not all
+
+-- 7d. Strings Table value referenced by the AE (delivered PS_STRINGS_TBL)
+SELECT STRING_TEXT FROM PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID = '<ID>';
 ```
 
 > **Depth:** pull what the AE actually invokes (the imported classes, the declared functions, the

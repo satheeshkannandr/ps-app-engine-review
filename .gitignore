@@ -6,5 +6,8 @@
 *_review.md
 /LN_*/
 
+# WT-376748 freight-exempt investigation — real order/customer/invoice data + config
+/WT376748_freight_exempt/
+
 # Local doc-generation helper script — not part of the published repo
 make_doc.py

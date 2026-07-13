@@ -11,3 +11,6 @@
 
 # Local doc-generation helper script — not part of the published repo
 make_doc.py
+
+# Playwright MCP scratch output (page snapshots/screenshots) — not part of the repo
+.playwright-mcp/

@@ -14,3 +14,6 @@ make_doc.py
 
 # Playwright MCP scratch output (page snapshots/screenshots) — not part of the repo
 .playwright-mcp/
+
+# GitHub folder — kept local, not published
+.github/

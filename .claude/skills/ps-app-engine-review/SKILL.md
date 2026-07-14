@@ -25,15 +25,16 @@ in the **Output Format** below.
   may differ (tools release, schema, NLS); the `connect` call returns the actual context —
   rely on that rather than assuming these values.
 - Tables are owned by `SYSADM`; query them unqualified (the connection user has access).
-- **Confirm columns before querying any table — never guess them.** Before writing a SELECT
-  against a table, first resolve its real columns:
+- **Confirm columns before querying any table — never guess them.** This applies to `PS_<REC>`
+  **data records** AND to **PeopleTools catalog tables** (`PSBCDEFN`, `PSPNLGRPDEFN`, `PSPNLFIELD`,
+  `PSRECGROUP`, `PSPRSMDEFN`, `PSPCMPROG`, …) — don't rely on remembered column names for the metadata
+  tables just because they're queried often. Resolve the real columns first:
   `SELECT column_name, data_type, nullable FROM all_tab_columns WHERE table_name = '<TABLE>' ORDER BY column_id;`
-  (or `DESCRIBE`). This applies to `PS_<RECNAME>` **data records** AND to **PeopleTools catalog
-  tables** (`PSAESTMTDEFN`, `PSPCMPROG`, `PSPNLGRPDEFN`, …) — don't rely on remembered column names
-  for the metadata tables just because they're queried often. Guessing produces `ORA-00904` failures
-  and wasted retries; one lookup removes it. Derived/Work records and views return no rows — fall
-  back to `PSRECFIELD`/`PSDBFIELD` (PeopleTools field metadata) or `all_views`. This is the same
-  lookup query 6 does for the AET state record — apply it to every table, not just the AET.
+  (or `DESCRIBE`), then write the SELECT. Never guess — it wastes turns on `ORA-00904`; also confirm
+  the table name to avoid `ORA-00942` (many PeopleTools tables are `PS_<NAME>`, not `PS<NAME>` — e.g.
+  `PS_PRCSDEFN`, not `PSPRCSDEFN`). Derived/Work records and views return no rows — fall back to
+  `PSRECFIELD`/`PSDBFIELD` (PeopleTools field metadata) or `all_views`. This is the same lookup as
+  query 6 does for the AET state record — apply it to every table, not just the AET.
 - **Server-side logs (when DB metadata isn't enough):** if a program's own logging is too sparse to
   explain a failure (see the *Restart safety* / *Loose ends* checks below), the real run logs live on
   the App Server / Process Scheduler host (Unix), not in the database. Fetch them from that host —

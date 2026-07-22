@@ -50,6 +50,7 @@ in the **Output Format** below.
 | `PSAESTMTDEFN` | Actions per step | `AE_SECTION`, `AE_STEP`, `AE_STMT_TYPE`, `AE_DO_SELECT_TYPE`, `AE_REUSE_STMT`, `SQLID`, `DESCR` |
 | `PSSQLTEXTDEFN` | **SQL action text** (CLOB) | `SQLID`, `SQLTYPE`, `SEQNUM`, `SQLTEXT` |
 | `PSPCMTXT` | **PeopleCode source** as plain-text CLOB | `OBJECTID1..7` / `OBJECTVALUE1..7`, `PROGSEQ`, `PCTEXT` |
+| `PS_PTAE_ACT_PLUGIN` | **AE Action Plugins** — steps whose action is overridden by a custom AE without touching the vanilla program (8.58 feature) | target: `AE_APPLID`,`PTAE_SECTION`,`PTAE_STEP`,`PTAE_ACTION_TYPE` · plugin: `PTAE_PLUG_APPLID`,`PTAE_PLUG_SECTION`,`PTAE_PLUG_STEP`,`PTAE_PLUG_ACTNTYPE` · `PTAE_PLUG_MODE`,`PTAE_MODE_SEQ`,`ENABLED` |
 
 > NOTE: In 8.58, `PSAESTMTDEFN` has **no** `SQLTEXT` column. The SQL action text lives in
 > `PSSQLTEXTDEFN`, joined on `SQLID`. PeopleCode is **plain readable text** in
@@ -70,6 +71,33 @@ in the **Output Format** below.
 ### Action execution order **within a step**
 `Do When` → `Do While` → `Do Select` → `PeopleCode` → `SQL`/`Call Section`/`Log Message`.
 (A `Do Select` loops the *following* actions in the same step once per fetched row.)
+
+### AE Action Plugins — the vanilla step you read may **not** be what runs
+An **AE Action Plugin** (`PS_PTAE_ACT_PLUGIN`, PeopleTools 8.58) lets a site override a
+**delivered** step's action with a step from a **custom** AE *without modifying the vanilla
+program*. At runtime PeopleSoft substitutes the plugin's action for (or around) the delivered
+one. This is invisible in `PSAESTMTDEFN`/`PSSQLTEXTDEFN` — the delivered SQL/PeopleCode still
+sits there unchanged — so **reviewing only the delivered action gives the wrong answer.** Always
+run the plugin check (query 1b) before drawing conclusions about any step's behavior.
+
+- **Target** (delivered action being overridden): `AE_APPLID` + `PTAE_SECTION` + `PTAE_STEP` +
+  `PTAE_ACTION_TYPE`.
+- **Plugin** (custom action that runs instead/alongside): `PTAE_PLUG_APPLID` +
+  `PTAE_PLUG_SECTION` + `PTAE_PLUG_STEP` + `PTAE_PLUG_ACTNTYPE` — extract this program's action
+  with the normal queries (4/5) and review it as the real logic.
+- **`PTAE_PLUG_MODE`**: `R` = **Replace** (delivered action is skipped), `B` = **Before**,
+  `A` = **After** (plugin runs in addition to the delivered one). `PTAE_MODE_SEQ` orders multiple
+  Before/After plugins on the same action.
+- **Action-type codes** (`PTAE_ACTION_TYPE` / `PTAE_PLUG_ACTNTYPE`): `S` = SQL, `P` = PeopleCode.
+- **`ENABLED`** `Y`/`N` — a disabled row is configured but not active; note it, don't treat it as live.
+- **Two directions to check:** (1) is the AE under review a *target* (its steps get overridden)?
+  (2) is it a *plugin* (`PTAE_PLUG_APPLID`) whose sections are injected into some delivered AE —
+  in which case it isn't run standalone and only makes sense in that host's context?
+
+> Real example (FSSAND): `AR_AGING` steps `DBUPDT.RSET_ITM` and `UPD_SUMC.DEL_EXST` are both
+> **Replaced** by `LN_ARAGE_PLG.MAIN.Step01`/`Step02`. Reviewing the delivered AR_AGING SQL for
+> those two steps is meaningless — the plugin's SQL is what executes (and is where e.g. an
+> intentional PARALLEL hint actually lives).
 
 ### `PSPCMTXT` key scheme for App Engine (`OBJECTID1 = 66`)
 | Field | Meaning | Example |
@@ -102,6 +130,28 @@ SELECT AE_APPLID, DESCR, AE_DISABLE_RESTART, AEPROGTYPE, AE_APPLLIBRARY,
        TEMPTBLINSTANCES, MESSAGE_SET_NBR, AE_DATE_OVERRIDE
 FROM   PSAEAPPLDEFN WHERE AE_APPLID = '<AE_APPLID>';
 ```
+
+**1b. AE Action Plugins — run this early; it can change which SQL/PeopleCode you review**
+```sql
+-- (a) Is this program's action overridden by a plugin? (it's the TARGET)
+SELECT PTAE_SECTION, PTAE_STEP, PTAE_ACTION_TYPE, ENABLED,
+       PTAE_PLUG_APPLID, PTAE_PLUG_SECTION, PTAE_PLUG_STEP, PTAE_PLUG_ACTNTYPE,
+       PTAE_PLUG_MODE, PTAE_MODE_SEQ, DESCR
+FROM   PS_PTAE_ACT_PLUGIN
+WHERE  AE_APPLID = '<AE_APPLID>'
+ORDER  BY PTAE_SECTION, PTAE_STEP, PTAE_MODE_SEQ, SEQNBR;
+
+-- (b) Is this program itself a plugin injected into some delivered AE? (it's the PLUGIN)
+SELECT AE_APPLID AS TARGET_AE, PTAE_SECTION, PTAE_STEP, PTAE_ACTION_TYPE,
+       PTAE_PLUG_SECTION, PTAE_PLUG_STEP, PTAE_PLUG_MODE, ENABLED, DESCR
+FROM   PS_PTAE_ACT_PLUGIN
+WHERE  PTAE_PLUG_APPLID = '<AE_APPLID>'
+ORDER  BY AE_APPLID, PTAE_SECTION, PTAE_STEP;
+```
+For every **enabled** row from (a) with mode `R` (Replace), skip the delivered action at that
+section/step and instead extract + review `PTAE_PLUG_APPLID.PTAE_PLUG_SECTION.PTAE_PLUG_STEP`
+via queries 4/5. For mode `B`/`A` (Before/After), review **both** the delivered action and the
+plugin action (they both run, in `PTAE_MODE_SEQ` order).
 
 **2. Section / step flow (with Call Section targets & Do-When/Do-Select hints)**
 ```sql
@@ -205,6 +255,12 @@ SELECT STRING_TEXT FROM PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID 
 > Use `LENGTH(PCTEXT)` first if a pull might be large, and read big results in chunks.
 
 ## Review checklist (what to actually look for)
+- **AE Action Plugins (query 1b) — check first.** If any step is overridden by a plugin, the
+  delivered SQL/PeopleCode for that step is *not* what runs. Review the plugin's action as the real
+  logic (Replace) or both actions (Before/After), and flag: a plugin that silently changes delivered
+  behavior, a `Replace` that drops important delivered logic, an enabled plugin pointing at a missing
+  section/step, or a disabled plugin someone expects to be live. This is easy to miss — a delivered AE
+  can look completely stock while a custom plugin quietly rewrites two of its steps.
 - **Restart safety:** `AE_DISABLE_RESTART`. If restart is **enabled** but the program holds
   open **File** handles or relies on **Component** variables initialized in an early section,
   a mid-run abend + restart resumes *past* the init step → invalid handles / lost state.
@@ -241,6 +297,8 @@ SELECT STRING_TEXT FROM PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID 
 1. **What it does** — 1 short paragraph; if run-control flags drive branching, add a small
    table mapping flag → section → behavior.
 2. **Flow** — `MAIN` and each called section, with the action(s) per step in plain language.
+   If any step is overridden by an AE Action Plugin (query 1b), mark it (e.g. *"[plugin: replaced
+   by `LN_ARAGE_PLG.MAIN.Step01`]"*) and describe what actually runs, not the delivered action.
 3. **Issues identified, highest impact first** — restart/reliability, then correctness, then
    performance, then minor/robustness. Be concrete; cite the section/step. Include findings from
    referenced App Package / FUNCLIB code (query 7), attributing each to its dependency and the AE

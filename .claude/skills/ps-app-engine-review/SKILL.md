@@ -1,6 +1,6 @@
 ---
 name: ps-app-engine-review
-description: Review a PeopleSoft Application Engine (AE) program. Use when asked to review, explain, or analyze an App Engine / AE_APPLID (e.g. "Review App Engine AR_AGING and connect to TEST"). Connects to the database, extracts the program straight from PeopleTools metadata tables (no XML export), reassembles SQL + PeopleCode, pulls the referenced App Package / FUNCLIB / named-SQL dependencies, and produces a structured review.
+description: Review a PeopleSoft Application Engine (AE) program. Use when asked to review, explain, or analyze an App Engine / AE_APPLID (e.g. "Review App Engine AR_AGING and connect to TEST"). Connects to the database, extracts the program straight from PeopleTools metadata tables (no XML export), reassembles SQL + PeopleCode, pulls the referenced dependencies (App Package, FUNCLIB, named SQL, File Layout, Component Interface, Process Definition, Message Catalog, URL, Integration Broker), and produces a structured review.
 ---
 
 # PeopleSoft App Engine Review Playbook
@@ -94,9 +94,9 @@ run the plugin check (query 1b) before drawing conclusions about any step's beha
   (2) is it a *plugin* (`PTAE_PLUG_APPLID`) whose sections are injected into some delivered AE —
   in which case it isn't run standalone and only makes sense in that host's context?
 
-> Real example (FSSAND): `AR_AGING` steps `DBUPDT.RSET_ITM` and `UPD_SUMC.DEL_EXST` are both
-> **Replaced** by `LN_ARAGE_PLG.MAIN.Step01`/`Step02`. Reviewing the delivered AR_AGING SQL for
-> those two steps is meaningless — the plugin's SQL is what executes (and is where e.g. an
+> Typical shape: delivered `AR_AGING` steps `DBUPDT.RSET_ITM` and `UPD_SUMC.DEL_EXST` are both
+> **Replaced** by a custom plugin AE's `MAIN.Step01`/`Step02`. Reviewing the delivered AR_AGING SQL
+> for those two steps is meaningless — the plugin's SQL is what executes (and is where e.g. an
 > intentional PARALLEL hint actually lives).
 
 ### `PSPCMTXT` key scheme for App Engine (`OBJECTID1 = 66`)
@@ -121,6 +121,29 @@ Same table, different key layout — query by the **name** in `OBJECTVALUE1` (no
 
 > Deeper packages (`A:B:C`) push the class name into `OBJECTVALUE3`/`4…`; just `ORDER BY OBJECTVALUE2..7, PROGSEQ`
 > and reassemble. Long classes are split across `PROGSEQ` rows (e.g. a 30 KB FTP class = 3 chunks).
+
+### Other object types an AE can reference (definition tables)
+An AE is rarely self-contained. When the reassembled SQL/PeopleCode references one of these,
+pull its **definition** too — the behaviour under review often lives there, not in the AE.
+Columns below are **verified on FSCM 9.2 / PT 8.58**; queries are in section 8.
+
+| Referenced from AE code | Object (App Designer type) | Header table | Detail tables |
+|---|---|---|---|
+| `SetFileLayout(FileLayout.X)` | File Layout (31) | `PSFLDDEFN` | `PSFLDSEGDEFN`, `PSFLDFIELDDEFN` |
+| `GetCompIntfc(CompIntfc.X)` | Component Interface (32) | `PSBCDEFN` | `PSBCITEM`; method code in `PSPCMTXT` |
+| `import`/`create <Pkg>:<Cls>` | Application Package (57) | `PSPACKAGEDEFN` | `PSAPPCLASSDEFN`; code in `PSPCMTXT` |
+| `ProcessRequest`, or the AE's own scheduler entry | Process Definition (20) | `PS_PRCSDEFN` | `PS_PRCSJOBDEFN` (jobs) |
+| `MessageBox`/`%MsgGet`/Log Message action, header `MESSAGE_SET_NBR` | Message Catalog (25) | `PSMSGCATDEFN` | — |
+| `URL.X` / `GetURL(URL.X)` | URL (56) | `PSURLDEFN` | — |
+| `SQLExec(SQL.X)` / `CreateSQL(SQL.X)` | SQL Object (30) | `PSSQLDEFN` | `PSSQLTEXTDEFN` (text) |
+| `%IntBroker.Publish`, `SyncRequest`, AE used as a handler | IB Service / Operation / Message / Node / Routing | `PSSERVICE`, `PSOPERATION`, `PSMSGDEFN`, `PSMSGNODEDEFN`, `PSIBRTNGDEFN` | `PSSERVICEOPR`, `PSOPERATIONAE`/`AC`/`CI`, `PSMSGREC`, `PSMSGPARTS` |
+| Records read/written by the AE's SQL | Record (0) / Field (2) | `PSRECDEFN` | `PSRECFIELD`, `PSDBFIELD` |
+| Hard-coded status/flag codes in SQL | Translate Values (4) | `PSXLATITEM` | — |
+| Access paths behind a slow step | Index (1) | `PSINDEXDEFN` | `PSKEYDEFN` |
+
+> **Deliberately out of scope for this skill:** Page (5), Menu (6), Component (7), Page PeopleCode
+> (44), Portal Registry/CRef (55), Related Content (111/112/113). These are online-only objects an
+> AE cannot invoke — they belong to a whole-project review, not an AE review.
 
 ## Extraction queries (replace `<AE_APPLID>`)
 
@@ -226,6 +249,8 @@ lives in these. Look for:
 - `CreateSQL(SQL.<name> ...)` / `SQLExec(SQL.<name> ...)` → **named SQL definition** (in `PSSQLTEXTDEFN`)
 - References to the **Strings Table** (`PS_STRINGS_TBL`, delivered) → resolve the actual text so the
   logic reads concretely. Most AEs key on `PROGRAM_ID + STRING_ID`; the value is in `STRING_TEXT`.
+- `FileLayout.<name>` · `CompIntfc.<name>` · `URL.<name>` · `Message.<name>` · `MessageBox`/`%MsgGet`
+  message sets → **other object definitions** — pull them with query 8 (same default-step rule).
 
 ```sql
 -- 7a. App Package class (or whole package: drop the OBJECTVALUE2 predicate)
@@ -245,7 +270,10 @@ SELECT SQLID, DBTYPE, MARKET, SEQNUM, SQLTEXT FROM PSSQLTEXTDEFN WHERE SQLID = '
 ORDER BY DBTYPE, SEQNUM;   -- if multiple DBTYPEs, read the Oracle ('2') or default (' '/'0') row, not all
 
 -- 7d. Strings Table value referenced by the AE (delivered PS_STRINGS_TBL)
-SELECT STRING_TEXT FROM PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID = '<ID>';
+--     Full key is PROGRAM_ID + STRING_ID + LABEL_ID — select LABEL_ID so multiple labels are visible.
+SELECT PROGRAM_ID, STRING_ID, LABEL_ID, STR_LBLTYPE, DEFAULT_LABEL, STRING_TEXT
+FROM   PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID = '<ID>';
+-- Dump everything one program uses:  ... WHERE PROGRAM_ID = '<PGM>' ORDER BY STRING_ID, LABEL_ID;
 ```
 
 > **Depth:** pull what the AE actually invokes (the imported classes, the declared functions, the
@@ -253,6 +281,142 @@ SELECT STRING_TEXT FROM PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID 
 > recurse through an entire helper library. A class often holds an **old, block-commented (`<* … *>`)
 > implementation** alongside the live one; review the active path but flag dead/commented code.
 > Use `LENGTH(PCTEXT)` first if a pull might be large, and read big results in chunks.
+
+**8. Other referenced object definitions** — run the ones the AE actually references (see the
+*Other object types* table above). Columns verified on FSCM 9.2 / PT 8.58; still re-check with
+`all_tab_columns` for anything not listed here.
+
+```sql
+-- 8a. File Layout referenced as FileLayout.<X> — header, segment hierarchy, field map
+SELECT FLDDEFNNAME, DESCR, FLDFORMAT, FLDDELIMITER, FLDFILENAME, FLDSEGCOUNT,
+       SUBSTR(DESCRLONG,1,500) AS DESCRLONG
+FROM   PSFLDDEFN WHERE FLDDEFNNAME = '<LAYOUT>';
+
+SELECT FLDSEGNAME, FLDSEGID, FLDSEGPARENT, FLDSEGIDSTART, FLDSEGIDLENGTH,
+       RECNAME_FILE, FLDSEQNO
+FROM   PSFLDSEGDEFN WHERE FLDDEFNNAME = '<LAYOUT>' ORDER BY FLDSEQNO;
+
+SELECT FLDSEGNAME, FLDFIELDNAME, FLDSTART, FLDLENGTH, FLDFIELDTYPE,
+       DECIMAL_POS, FLDTRIMSPACES, FLDSEQNO
+FROM   PSFLDFIELDDEFN WHERE FLDDEFNNAME = '<LAYOUT>' ORDER BY FLDSEGNAME, FLDSEQNO;
+```
+> `FLDFIELDTYPE` `0`=char, `2`=number (strips leading zeros/spaces). Read this field map instead of
+> eyeballing a sample file. A personal/dev-share path left in `FLDFILENAME` is a finding.
+
+```sql
+-- 8b. Component Interface referenced as CompIntfc.<X> (internal name = Business Component)
+SELECT BCNAME, BCDISPLAYNAME, BCPGNAME, MARKET, MENUNAME,
+       SEARCHRECNAME, ADDSRCHRECNAME, ITEMCOUNT, DESCR
+FROM   PSBCDEFN WHERE BCNAME = '<CI>';
+
+SELECT BCTYPE, BCITEMPARENT, BCITEMNAME, BCACCESS, BCSCROLLNAME,
+       RECNAME, FIELDNAME, SEQUENCE_NBR_6
+FROM   PSBCITEM WHERE BCNAME = '<CI>' ORDER BY BCITEMPARENT, SEQUENCE_NBR_6;
+```
+> The CI drives the online component's PeopleCode, so an AE using a CI inherits the component's
+> defaulting and edits. `BCACCESS` shows read-only vs read/write properties — a property the AE
+> sets that the CI exposes read-only silently does nothing. CI **method** PeopleCode is in
+> `PSPCMTXT` (query by `OBJECTVALUE1 = '<CI>'`).
+
+```sql
+-- 8c. Application Package hierarchy + classes (complements the code pull in 7a)
+SELECT PACKAGEROOT, QUALIFYPATH, PACKAGELEVEL, DESCR
+FROM   PSPACKAGEDEFN WHERE PACKAGEROOT = '<PACKAGE>' ORDER BY QUALIFYPATH, PACKAGELEVEL;
+
+SELECT PACKAGEROOT, QUALIFYPATH, APPCLASSID, DESCR
+FROM   PSAPPCLASSDEFN WHERE PACKAGEROOT = '<PACKAGE>' ORDER BY QUALIFYPATH, APPCLASSID;
+```
+> `QUALIFYPATH = ':'` means the class sits at the package root; anything else is the sub-package path.
+
+```sql
+-- 8d. Process Definition for this AE (and any job that runs it)
+SELECT PRCSTYPE, PRCSNAME, RESTARTENABLED, MAXCONCURRENT, RUNLOCATION, SERVERNAME,
+       PARMLIST, TIMEOUTMINUTES, TIMEOUTMAXMINS, RETRYCOUNT, PRCSCATEGORY,
+       OUTDESTTYPE, OUTDEST, DESCR
+FROM   PS_PRCSDEFN WHERE PRCSNAME = '<AE_APPLID>';
+
+SELECT PRCSJOBNAME, PRCSTYPE, DESCR, JOBRUNMODE, MAXCONCURRENT, PRCSCATEGORY
+FROM   PS_PRCSJOBDEFN WHERE PRCSJOBNAME = '<JOB>';
+```
+> **Cross-check restart in both places.** `PSAEAPPLDEFN.AE_DISABLE_RESTART` (the program) and
+> `PS_PRCSDEFN.RESTARTENABLED` (the scheduler entry) are separate switches — a program that
+> intends "no restart" but sits behind `RESTARTENABLED = '1'` is a finding. Also check
+> `MAXCONCURRENT` against the shared-staging concern below (`MAXCONCURRENT = 0` = unlimited).
+
+```sql
+-- 8e. Message Catalog entries the AE emits (header MESSAGE_SET_NBR, MessageBox/%MsgGet, Log Message)
+SELECT MESSAGE_SET_NBR, MESSAGE_NBR, MESSAGE_TEXT, MSG_SEVERITY,
+       SUBSTR(DESCRLONG,1,500) AS DESCRLONG
+FROM   PSMSGCATDEFN WHERE MESSAGE_SET_NBR = <SET> AND MESSAGE_NBR IN (<NBRS>)
+ORDER  BY MESSAGE_NBR;
+```
+> Resolve every message the AE raises — the text is what an operator sees, and a `%1/%2` count
+> that doesn't match the call's parameters produces a useless log line.
+
+```sql
+-- 8f. URL definition referenced as URL.<X>
+SELECT URL_ID, URL, DESCR, ICLIENT_SERVERFLAG, COMMENTS FROM PSURLDEFN WHERE URL_ID = '<URL_ID>';
+```
+> Flag credentials embedded in the `URL` value, and an environment-specific host hard-coded where
+> a per-environment URL definition (or config record) should be used.
+
+```sql
+-- 8g. Named SQL object header (the text itself is query 7c)
+SELECT SQLID, SQLTYPE, ENABLEEFFDT, LASTUPDOPRID, LASTUPDDTTM FROM PSSQLDEFN WHERE SQLID = '<SQL_NAME>';
+```
+
+```sql
+-- 8h. Integration Broker — is this AE a service-operation handler, and what does it publish?
+SELECT IB_OPERATIONNAME, HANDLERNAME, AE_APPLID, PACKAGEROOT, APPCLASSID, APPCLASSMETHOD
+FROM   PSOPERATIONAE WHERE AE_APPLID = '<AE_APPLID>';   -- AE invoked as a handler
+
+SELECT IB_OPERATIONNAME, VERSION, DEFAULTVER, RTNGTYPE, IB_SERVICENAME,
+       MSGNAME, IB_MSGVERSION, IB_REQUESTSTATUS, IB_THINKTIME, DESCR
+FROM   PSOPERATION WHERE IB_OPERATIONNAME = '<OPERATION>';
+
+SELECT MSGNAME, VERSION, XMLALIAS, MSGSTATUS, DEFAULTVER, DESCR
+FROM   PSMSGDEFN WHERE MSGNAME = '<MESSAGE>';
+SELECT MSGNAME, APMSGVER, RECNAME, PRNTRECNAME, SEQNO
+FROM   PSMSGREC WHERE MSGNAME = '<MESSAGE>' ORDER BY SEQNO;     -- rowset-based structure
+
+SELECT ROUTINGDEFNNAME, EFF_STATUS, SENDERNODENAME, RECEIVERNODENAME, RTNGTYPE,
+       IB_OPERATIONNAME, CONNGATEWAYID, CONNID
+FROM   PSIBRTNGDEFN WHERE IB_OPERATIONNAME = '<OPERATION>' ORDER BY EFFDT DESC;
+
+SELECT MSGNODENAME, DESCR, ACTIVE_NODE, LOCALNODE, NODE_TYPE, IB_TGTLOCATION, CONNID
+FROM   PSMSGNODEDEFN WHERE MSGNODENAME = '<NODE>';
+```
+> Handler tables by type: `PSOPERATIONAE` (App Engine), `PSOPERATIONAC` (app class),
+> `PSOPERATIONCI` (Component Interface). An AE found in `PSOPERATIONAE` is **not run standalone** —
+> review it in the context of that operation's inbound message. An inactive node
+> (`ACTIVE_NODE = 'N'`) or an `EFF_STATUS = 'I'` routing means the publish silently goes nowhere.
+
+```sql
+-- 8i. Record / field definitions behind the AE's SQL (record type, temp tables, xlat codes)
+SELECT RECNAME, RECTYPE, SQLTABLENAME, FIELDCOUNT, PARENTRECNAME,
+       SUBSTR(DESCRLONG,1,500) AS DESCRLONG
+FROM   PSRECDEFN WHERE RECNAME IN (<RECNAMES>);        -- RECTYPE 0=SQL table, 1=view, 7=temp table
+
+SELECT FIELDNAME, FIELDTYPE, LENGTH, DECIMALPOS FROM PSDBFIELD WHERE FIELDNAME = '<FIELD>';
+
+SELECT FIELDNAME, FIELDVALUE, EFFDT, EFF_STATUS, XLATLONGNAME
+FROM   PSXLATITEM WHERE FIELDNAME = '<FIELD>' ORDER BY FIELDVALUE, EFFDT;
+```
+> `PSRECDEFN` has **no `DESCR` column** — the long comment is `DESCRLONG` (`RECDESCR` is a
+> different flag). `RECTYPE = 7` confirms a record really is a temp table (cross-check against
+> `TEMPTBLINSTANCES` on the header). Resolve hard-coded status literals in AE SQL against
+> `PSXLATITEM` so the logic reads concretely, and flag codes that no longer exist or are
+> `EFF_STATUS = 'I'`.
+
+```sql
+-- 8j. Indexes on a table a slow step hits — does the WHERE clause have a usable access path?
+SELECT I.RECNAME, I.INDEXID, I.INDEXTYPE, I.UNIQUEFLAG, I.ACTIVEFLAG, I.PLATFORM_ORA,
+       K.KEYPOSN, K.FIELDNAME, K.ASCDESC
+FROM   PSINDEXDEFN I JOIN PSKEYDEFN K ON K.RECNAME = I.RECNAME AND K.INDEXID = I.INDEXID
+WHERE  I.RECNAME = '<RECNAME>' ORDER BY I.INDEXID, K.KEYPOSN;
+```
+> `PLATFORM_ORA = 1` means the index is built on Oracle. Use this to back a performance finding
+> with evidence rather than asserting "no index" — and check `ACTIVEFLAG` before assuming one exists.
 
 ## Review checklist (what to actually look for)
 - **AE Action Plugins (query 1b) — check first.** If any step is overridden by a plugin, the
@@ -290,6 +454,26 @@ SELECT STRING_TEXT FROM PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID 
   record without re-validating** (e.g. forcing a voucher Postable over a closed period), and **old
   block-commented implementations** left beside the active one. Attribute bugs to the dependency,
   not the AE, and say which AE step triggers them.
+- **Referenced object definitions (query 8):** review the definition of every non-code object the AE
+  touches, not just its PeopleCode. Common finds:
+  - **File Layout (8a):** field positions/lengths in `PSFLDFIELDDEFN` that don't match what the AE
+    parses or what the trading partner sends; a numeric (`FLDFIELDTYPE = 2`) field the code treats as
+    char; a hard-coded personal/dev-share path in `FLDFILENAME`; a segment the AE never handles.
+  - **Component Interface (8b):** the CI runs the online component's PeopleCode, so an AE using one
+    inherits its defaults and edits. Check that every property the AE sets exists and is writable
+    (`BCACCESS`), and that a missing default (a property never populated) can't abend the save.
+  - **Process Definition (8d):** `PS_PRCSDEFN.RESTARTENABLED` vs `PSAEAPPLDEFN.AE_DISABLE_RESTART` —
+    they're independent switches and must agree with the restart analysis above. Also `MAXCONCURRENT`
+    (0 = unlimited) against shared staging, and `TIMEOUTMINUTES` against real runtime.
+  - **Message Catalog (8e):** resolve every message the AE raises; flag missing entries and `%1/%2`
+    placeholders that don't match the call's parameters (they produce useless operator log lines).
+  - **URL / IB (8f, 8h):** credentials or an environment-specific host baked into `PSURLDEFN.URL`;
+    an inactive node or `EFF_STATUS = 'I'` routing that makes a publish silently go nowhere; an AE
+    listed in `PSOPERATIONAE` is a handler, so review it against its inbound message, not standalone.
+  - **Record / Translate (8i):** confirm `RECTYPE = 7` for anything treated as a temp table; resolve
+    hard-coded status literals against `PSXLATITEM` and flag codes that are missing or `EFF_STATUS = 'I'`.
+  - **Index (8j):** back a performance finding with the actual index list rather than asserting
+    "no index" — check `ACTIVEFLAG` and `PLATFORM_ORA`.
 - **Loose ends:** unused `TEMPTBLINSTANCES`, unguarded file `Close`/`WriteLine`, `AE_ON_NOROWS`,
   inactive/`**OBSOLETE**` steps, and speculative code paths that are coded but never configured.
 
@@ -298,16 +482,18 @@ SELECT STRING_TEXT FROM PS_STRINGS_TBL WHERE PROGRAM_ID = '<PGM>' AND STRING_ID 
    table mapping flag → section → behavior.
 2. **Flow** — `MAIN` and each called section, with the action(s) per step in plain language.
    If any step is overridden by an AE Action Plugin (query 1b), mark it (e.g. *"[plugin: replaced
-   by `LN_ARAGE_PLG.MAIN.Step01`]"*) and describe what actually runs, not the delivered action.
+   by `<PLUGIN_AE>.MAIN.Step01`]"*) and describe what actually runs, not the delivered action.
 3. **Issues identified, highest impact first** — restart/reliability, then correctness, then
    performance, then minor/robustness. Be concrete; cite the section/step. Include findings from
-   referenced App Package / FUNCLIB code (query 7), attributing each to its dependency and the AE
-   step that triggers it.
+   referenced App Package / FUNCLIB code (query 7) and referenced object definitions (query 8),
+   attributing each to its dependency and the AE step that triggers it.
 4. **Net** — the one or two things to fix first, and offer to write up a formal review doc.
 
-> Pulling referenced App Package / FUNCLIB / SQL-definition code (query 7) is a **default step**, not
-> an offer — the dependencies are part of the program's real behavior. Only skip it for a trivial AE
-> with no `import` / `Declare Function` / `SQL.<name>` references.
+> Pulling referenced App Package / FUNCLIB / SQL-definition code (query 7) and the definitions of the
+> other objects the AE references — File Layout, CI, Process Definition, Message Catalog, URL, IB
+> (query 8) — is a **default step**, not an offer: the dependencies are part of the program's real
+> behavior. Only skip it for a trivial AE with no `import` / `Declare Function` / `SQL.<name>` /
+> `FileLayout.` / `CompIntfc.` / `URL.` references.
 
 Keep it brief and concrete. Verify before asserting a bug (especially date/bind issues).
 Save extracted source to a `<APPLID>/` subfolder only if the user asks.

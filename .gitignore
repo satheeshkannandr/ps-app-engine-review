@@ -17,3 +17,6 @@ make_doc.py
 
 # GitHub folder — kept local, not published
 .github/
+
+# Claude project instructions — kept local, not published
+/CLAUDE.md

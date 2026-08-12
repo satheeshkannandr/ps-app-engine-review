@@ -66,7 +66,8 @@ in the **Output Format** below.
 
 ### `AE_STMT_TYPE` codes
 `P` = PeopleCode · `S` = SQL · `C` = Call Section · `D` = Do Select · `H` = Do When ·
-`W` = Do While · `N` = Do Until · `M` = Log Message.
+`W` = Do While · `N` = Do Until · `M` = Log Message · `X` = XSLT (transform programs only,
+`AEPROGTYPE = '4'`).
 
 ### Action execution order **within a step**
 `Do When` → `Do While` → `Do Select` → `PeopleCode` → `SQL`/`Call Section`/`Log Message`.
@@ -233,10 +234,21 @@ ORDER  BY OBJECTVALUE2, OBJECTVALUE5, OBJECTVALUE6, OBJECTVALUE7, PROGSEQ;
 > or project XML export for that program.
 
 **6. State record (AET) field types** — needed to judge bind/date correctness
+
+First get the program's *actual* state records from `PSAEAPPLSTATE` — do **not** guess
+`PS_<AE_APPLID>_AET`. A program often has several state records, none of which need match the
+program name, and only the `AE_DEFAULT_STATE = 'Y'` row is the default record that unqualified
+state references resolve to:
+```sql
+SELECT AE_APPLID, AE_STATE_RECNAME, AE_DEFAULT_STATE
+FROM   PSAEAPPLSTATE
+WHERE  AE_APPLID = '<AE_APPLID>';
+```
+Then read the field types of each one returned:
 ```sql
 SELECT table_name, column_name, data_type, data_length
 FROM   all_tab_columns
-WHERE  table_name = 'PS_<AET_RECORD>'   -- usually PS_<AE_APPLID>_AET
+WHERE  table_name = 'PS_<AE_STATE_RECNAME>'
 ORDER  BY column_id;
 ```
 

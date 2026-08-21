@@ -27,3 +27,6 @@ make_doc.py
 
 # Gemini project instructions — kept local, not published
 /GEMINI.md
+
+# Agents for Gemini folder — kept local, not published
+.agents/

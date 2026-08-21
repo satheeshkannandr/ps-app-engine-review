@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+output/
+*_review_package.md
+sample_output.md

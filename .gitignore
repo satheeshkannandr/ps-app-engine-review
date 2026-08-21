@@ -5,6 +5,7 @@
 # Keep these OUT of GitHub. Remove a line if you ever intentionally publish a review.
 *_review.md
 /LN_*/
+/Reviews/
 
 # WT-376748 freight-exempt investigation — real order/customer/invoice data + config
 /WT376748_freight_exempt/
@@ -20,3 +21,9 @@ make_doc.py
 
 # Claude project instructions — kept local, not published
 /CLAUDE.md
+
+# Self use
+/Commands.txt
+
+# Gemini project instructions — kept local, not published
+/GEMINI.md

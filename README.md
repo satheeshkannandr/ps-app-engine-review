@@ -1,6 +1,6 @@
-## PeopleSoft Application Engine Review
+## PeopleSoft Application Engine Overview
 
-A workspace for reviewing **PeopleSoft Application Engine (AE)** programs by reading them
+A workspace for extracting and analyzing **PeopleSoft Application Engine (AE)** programs by reading them
 directly out of the PeopleTools metadata tables — no App Designer XML export required.
 
 **Connects to whatever database you name** (saved SQLcl connections; e.g. `TEST`).

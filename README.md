@@ -102,37 +102,40 @@ on **Windows** that's `%APPDATA%\DBTools\connections` (e.g.
 
 ## How to use
 
-Open this folder in Claude Code and ask (substitute the program id and the database):
+Open this folder in your AI assistant (Antigravity, Claude Code, GitHub Copilot) and ask:
 
 > **Review App Engine `<AE_APPLID>` and explain what it does. Connect to '<DB_NAME>' database**
 
 For example: *Review App Engine `AR_AGING` and explain what it does. Connect to 'TEST' database*
 
-This runs the **`ps-app-engine-review`** skill ([.claude/skills/ps-app-engine-review/SKILL.md](.claude/skills/ps-app-engine-review/SKILL.md)),
-which Claude auto-invokes on that request — or you can call it explicitly with `/ps-app-engine-review`.
-It's committed in the repo, so anyone who opens this project gets it automatically.
+This runs the **`ps-ae-overview`** skill ([.agents/skills/ps-ae-overview/SKILL.md](.agents/skills/ps-ae-overview/SKILL.md)), which can also be invoked directly with `/ps-ae-overview`.
 
-Claude will (per the skill):
+### Dual-Mode Execution
 
-1. Connect to the `<DB_NAME>` you named.
-2. Pull the program from the metadata tables:
-   - **Structure** — `PSAEAPPLDEFN`, `PSAESECTDEFN`, `PSAESTEPDEFN`, `PSAESTMTDEFN`
-   - **SQL action text** — `PSSQLTEXTDEFN` (joined on `SQLID`)
-   - **PeopleCode source** — `PSPCMTXT.PCTEXT` (plain text)
-   - **Referenced code (by default)** — any **App Package** classes (`import`), **record/FUNCLIB**
-     functions (`Declare Function`), and **named SQL** (`SQL.<name>`) the AE calls are also pulled
-     from `PSPCMTXT` / `PSSQLTEXTDEFN`, since the program's real behavior usually lives there.
-3. Reassemble the program in execution order and return a review:
-   **Part 1: Business User Overview (plain-English purpose, business lifecycle role, rules/retention matrix, user interaction & safeguards) → Part 2: Technical Architecture & Risk Review (active steps flow, dependencies, categorized risks, prioritized action plan).**
+1. **Mode 1: Autonomous Agent Run**  
+   The AI assistant runs the bundled Python extraction script (`scripts/ae_extractor.py`) via SQLcl in seconds, pulls all metadata and dependencies into `output/<AE_APPLID>_review_package.md`, and produces the review.
+
+2. **Mode 2: Pre-Extracted Review (Manual CLI Run)**  
+   You can run the extractor directly in PowerShell:
+   ```powershell
+   python .agents/skills/ps-ae-overview/scripts/ae_extractor.py --ae AR_AGING --database TEST --output-dir output
+   ```
+   Then prompt the AI: *"Review the package for AR_AGING"*. The assistant reads the existing package and returns the review immediately without making DB round-trips.
+
+### Output Structure
+
+The review is returned in a clean, two-part structure:
+- **Part 1: Business User Overview** — Plain-English purpose, business lifecycle placement, core business rules & qualification matrix, user interaction, and operational safeguards.
+- **Part 2: Technical Architecture & Risk Review** — Active steps execution flow, technical dependencies, categorized risk findings (Restart/Reliability, Correctness, Performance, Code Quality), and prioritized action plan.
 
 ## Why DB-direct works
 PeopleCode is stored as **readable plain text** in `PSPCMTXT.PCTEXT` across PeopleTools
 versions (not just compiled bytecode), so the full program — PeopleCode + SQL + flow, **plus the
 App Package / FUNCLIB classes it calls** — can be extracted with SQL queries alone, no XML export
-needed. See the [`ps-app-engine-review` skill](.claude/skills/ps-app-engine-review/SKILL.md) for the exact tables,
-key schemes (AE *and* referenced-code), queries, and the fallback if a program returns no source.
+needed. See the [`ps-ae-overview` skill](.agents/skills/ps-ae-overview/SKILL.md) for the exact tables,
+key schemes (AE *and* referenced-code), and review checklist.
 
 ## Notes
-- The review checklist emphasizes restart safety, join correctness, date/bind handling, and
+- The review checklist emphasizes restart safety, join correctness, date/bind handling, Component Interface abends, and
   performance over large AR/GL tables.
 - Extracted source for a given program can optionally be saved under `<AE_APPLID>/`.

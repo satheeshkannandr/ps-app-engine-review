@@ -30,3 +30,7 @@ make_doc.py
 
 # Agents for Gemini folder — kept local, not published
 .agents/
+
+# Python cache
+__pycache__/
+*.pyc

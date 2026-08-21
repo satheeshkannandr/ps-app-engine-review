@@ -1,8 +1,7 @@
-## PeopleSoft AE Extractor
+## PeopleSoft AE Overview
 
-A script-first companion to [`ps-app-engine-review`](../ps-app-engine-review/README.md).
-Instead of the assistant issuing 30+ live MCP queries (one per turn) while it reviews, a single
-Python run pulls **everything** out of the PeopleTools metadata tables and writes one
+A script-backed skill for reviewing PeopleSoft Application Engine (AE) programs.
+A single Python run pulls **everything** out of the PeopleTools metadata tables and writes one
 `<AE_APPLID>_review_package.md`. The assistant then reads that one file and produces the review —
 **zero DB round-trips during analysis**.
 
@@ -10,13 +9,9 @@ Python run pulls **everything** out of the PeopleTools metadata tables and write
 Reference instance `TEST` = PeopleSoft FSCM 9.2 / PeopleTools 8.58 · Oracle 19c;
 other instances may differ and the extractor reports the actual session identity in the package header.
 
-| | `ps-app-engine-review` | `ps-ae-extractor` |
-| --- | --- | --- |
-| How it gets data | live MCP SQLcl queries, one per turn | one Python run, 4–5 batched SQLcl sessions |
-| Where the data lands | in the conversation | `output/<AE_APPLID>_review_package.md` |
-| Best for | quick look, ad-hoc follow-ups, "just explain step 3" | full review of a large AE, repeatable/offline review, sharing the extract |
-
-Both produce the **same structured review** — *Part 1: Business User Overview (purpose, lifecycle role, rules/retention matrix, user interaction & safeguards) → Part 2: Technical Architecture & Risk Review (active steps flow, dependencies, categorized risks, prioritized action plan)*.
+Produces the **Two-Part Structured Review**:
+- **Part 1: Business User Overview** (purpose, lifecycle role, rules/retention matrix, user interaction & safeguards)
+- **Part 2: Technical Architecture & Risk Review** (active steps flow, dependencies, categorized risks, prioritized action plan).
 
 ## Pre-requisites
 

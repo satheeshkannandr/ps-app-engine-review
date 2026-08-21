@@ -148,8 +148,7 @@ The assistant will (per [SKILL.md](SKILL.md)):
      functions (`Declare Function`), and **named SQL** (`SQL.<name>`) the AE calls are also pulled
      from `PSPCMTXT` / `PSSQLTEXTDEFN`, since the program's real behavior usually lives there.
 3. Reassemble the program in execution order and return a review:
-   **what it does → section/step flow → issues (highest impact first, including findings from the
-   referenced code) → what to fix first.**
+   **Part 1: Business User Overview (plain-English purpose, business lifecycle role, rules/retention matrix, user interaction & safeguards) → Part 2: Technical Architecture & Risk Review (active steps flow, dependencies, categorized risks, prioritized action plan).**
 
 ## Why DB-direct works
 PeopleCode is stored as **readable plain text** in `PSPCMTXT.PCTEXT` across PeopleTools

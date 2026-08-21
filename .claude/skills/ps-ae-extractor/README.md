@@ -16,7 +16,7 @@ other instances may differ and the extractor reports the actual session identity
 | Where the data lands | in the conversation | `output/<AE_APPLID>_review_package.md` |
 | Best for | quick look, ad-hoc follow-ups, "just explain step 3" | full review of a large AE, repeatable/offline review, sharing the extract |
 
-Both produce the **same structured review** — *what it does → flow → issues → what to fix first*.
+Both produce the **same structured review** — *Part 1: Business User Overview (purpose, lifecycle role, rules/retention matrix, user interaction & safeguards) → Part 2: Technical Architecture & Risk Review (active steps flow, dependencies, categorized risks, prioritized action plan)*.
 
 ## Pre-requisites
 
@@ -132,8 +132,7 @@ Ask (substitute the program id and the database):
 > **Review App Engine `<AE_APPLID>` using the extractor. Connect to '<DB_NAME>' database**
 
 The assistant runs step 1, reads `output/<AE_APPLID>_review_package.md`, and returns:
-**what it does → section/step flow (marking any plugin-overridden step) → issues, highest impact
-first → what to fix first.**
+**Part 1: Business User Overview (plain-English purpose, business lifecycle role, rules/retention matrix, user interaction & safeguards) → Part 2: Technical Architecture & Risk Review (active steps flow, dependencies, categorized risks, prioritized action plan).**
 
 **If the package is already generated**, say so and the extraction is skipped entirely — no
 database needed:

@@ -490,16 +490,24 @@ WHERE  I.RECNAME = '<RECNAME>' ORDER BY I.INDEXID, K.KEYPOSN;
   inactive/`**OBSOLETE**` steps, and speculative code paths that are coded but never configured.
 
 ## Output Format (match this structure)
-1. **What it does** — 1 short paragraph; if run-control flags drive branching, add a small
-   table mapping flag → section → behavior.
-2. **Flow** — `MAIN` and each called section, with the action(s) per step in plain language.
-   If any step is overridden by an AE Action Plugin (query 1b), mark it (e.g. *"[plugin: replaced
-   by `<PLUGIN_AE>.MAIN.Step01`]"*) and describe what actually runs, not the delivered action.
-3. **Issues identified, highest impact first** — restart/reliability, then correctness, then
-   performance, then minor/robustness. Be concrete; cite the section/step. Include findings from
-   referenced App Package / FUNCLIB code (query 7) and referenced object definitions (query 8),
-   attributing each to its dependency and the AE step that triggers it.
-4. **Net** — the one or two things to fix first, and offer to write up a formal review doc.
+
+Produce the review in a clean, two-part structure:
+
+### Part 1: Business User Overview (Executive / Functional Persona)
+1. **What is this process?** — 1–2 plain-English paragraphs explaining what business problem it solves and where it fits in the PeopleSoft functional lifecycle (e.g. AR refund creation, billing generation, ledger close, system housekeeping).
+2. **Why does the business need it?** — Bulleted list of business benefits (operational efficiency, duplicate prevention, automated audit compliance, risk mitigation).
+3. **How the Business Rules Work** — A structured table or mapping explaining the core business rules, qualification criteria, status transitions, or retention policies in business terminology.
+4. **User Interaction & Operational Safeguards** — Who/what triggers it (scheduled batch recurrence, online page action, IB event), required manual parameters (if any), and data safeguards (e.g., financial ledger protection, validation enforced via Component Interfaces, duplicate checks).
+
+### Part 2: Technical Architecture & Risk Review (Developer Persona)
+1. **Execution Flow & Program Structure** — Sequential walkthrough table containing **ACTIVE steps and sections ONLY** (`AE_ACTIVE_STATUS = 'A'`). Do **not** clutter the flow table with inactive or obsolete steps. For each step list: `Section`, `Step`, `Type`, `Commit`, and plain-language logic description. If any step is overridden by an AE Action Plugin (query 1b), mark it clearly (e.g., *"[plugin: replaced by `<PLUGIN_AE>.MAIN.Step01`]"*).
+2. **Technical Dependencies Extracted** — List the referenced state records (AET), App Packages, FUNCLIBs, Component Interfaces, Named SQL objects, File Layouts, and Message Sets that drive the real logic.
+3. **Issues Identified (Highest Impact First)** — Categorized findings citing exact section/step and dependency names:
+   - *Restart & Reliability* (`AE_DISABLE_RESTART` vs scheduler, commit boundaries, file handles)
+   - *Correctness & Data Integrity* (Join row loss, bind syntax, staging table purge leaks, date formatting)
+   - *Performance* (Row-by-row `Do Select` + PeopleCode vs set-based SQL, index coverage)
+   - *Code Quality & Maintainability* (Inactive/dead code, hardcoded literals, unbound dynamic SQL)
+4. **Action Plan & Summary** — Prioritized table of actionable recommendations.
 
 > Pulling referenced App Package / FUNCLIB / SQL-definition code (query 7) and the definitions of the
 > other objects the AE references — File Layout, CI, Process Definition, Message Catalog, URL, IB

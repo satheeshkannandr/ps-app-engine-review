@@ -88,17 +88,19 @@ The script resolves the two things that are easy to get wrong by hand:
 
 ## Output format for the LLM review
 
-After reading `review_package.md`, produce:
+After reading `review_package.md`, produce the review in a clean, two-part structure:
 
-1. **What it does** — 1 short paragraph; if run-control flags drive branching, add a
-   table mapping flag → section → behavior.
-2. **Flow** — MAIN and each called section, action(s) per step in plain language. If
-   any step is overridden by an AE Action Plugin (§2 of the package), mark it and
-   describe what actually runs.
-3. **Issues** — highest impact first (restart/reliability → correctness → performance
-   → minor). Cite the section/step. Attribute findings from dependencies to their
-   dependency and the AE step that triggers them.
-4. **Net** — the one or two things to fix first.
+### Part 1: Business User Overview (Executive / Functional Persona)
+1. **What is this process?** — 1–2 plain-English paragraphs explaining what business problem it solves and where it fits in the PeopleSoft functional lifecycle (e.g. AR refund creation, billing generation, ledger close, system housekeeping).
+2. **Why does the business need it?** — Bulleted list of business benefits (operational efficiency, duplicate prevention, automated audit compliance, risk mitigation).
+3. **How the Business Rules Work** — A structured table or mapping explaining the core business rules, qualification criteria, status transitions, or retention policies in business terminology.
+4. **User Interaction & Operational Safeguards** — Who/what triggers it (scheduled batch recurrence, online page action, IB event), required manual parameters (if any), and data safeguards (e.g., financial ledger protection, validation enforced via Component Interfaces, duplicate checks).
+
+### Part 2: Technical Architecture & Risk Review (Developer Persona)
+1. **Execution Flow & Program Structure** — Sequential walkthrough table containing **ACTIVE steps and sections ONLY** (`AE_ACTIVE_STATUS = 'A'`). Do **not** clutter the flow table with inactive or obsolete steps. For each step list: `Section`, `Step`, `Type`, `Commit`, and plain-language logic description. If any step is overridden by an AE Action Plugin (§2 of the package), mark it clearly (e.g., *"[plugin: replaced by `<PLUGIN_AE>.MAIN.Step01`]"*).
+2. **Technical Dependencies Extracted** — List the referenced state records (AET), App Packages, FUNCLIBs, Component Interfaces, Named SQL objects, File Layouts, and Message Sets that drive the real logic.
+3. **Issues Identified (Highest Impact First)** — Categorized findings citing exact section/step and dependency names (restart/reliability → correctness → performance → minor/dead code).
+4. **Action Plan & Summary** — Prioritized table of actionable recommendations.
 
 ## When to fall back to interactive queries
 
